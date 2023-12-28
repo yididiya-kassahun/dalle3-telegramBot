@@ -1,4 +1,5 @@
 const TelegramBot = require("node-telegram-bot-api");
+const gtts = require("node-gtts")("en");
 const OpenAIApi = require("openai");
 let fs = require("fs");
 const path = require("path");
@@ -37,54 +38,72 @@ bot.onText(/start/, (msg) => {
 });
 
 bot.onText(/Img Generate/, async (msg) => {
-  const searchInput = await bot.sendMessage(
-    msg.chat.id,
-    "Enter your prompt and i'll give you the generated image \n\n ",
-    {
-      reply_markup: {
-        force_reply: true,
-      },
-    }
-  );
+  await bot
+    .sendMessage(
+      msg.chat.id,
+      "Enter your prompt and i'll give you the generated image \n\n ",
+      {
+        reply_markup: {
+          force_reply: true,
+        },
+      }
+    )
+    .then((searchInput) => {
+      bot.onReplyToMessage(
+        msg.chat.id,
+        searchInput.message_id,
+        async (userSearch) => {
+          //  console.log(userSearch.text);
+          bot.sendMessage(
+            msg.chat.id,
+            "Generating the image 🌌 please wait a few seconds ⏳ ...\n\n "
+          );
 
-  bot.onReplyToMessage(
-    msg.chat.id,
-    searchInput.message_id,
-    async (userSearch) => {
-      //  console.log(userSearch.text);
-      const generatedImage = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: userSearch.text,
-        n: 1,
-        size: "1024x1024",
-      });
+          const generatedImage = await openai.images.generate({
+            model: "dall-e-3",
+            prompt: userSearch.text,
+            n: 1,
+            size: "1024x1024",
+          });
 
-      let image_url = generatedImage.data[0].url;
-      let revisedPrompt = generatedImage.data[0].revised_prompt;
+          let image_url = generatedImage.data[0].url;
+          let revisedPrompt = generatedImage.data[0].revised_prompt;
 
-      console.log(image_url);
-      console.log(revisedPrompt);
+          console.log(image_url);
+          console.log(revisedPrompt);
 
-    await downloadImage(image_url, "download.jpg")
-        .then((imagePath) => {
-          console.log(`Image downloaded at: ${imagePath}`);
-          bot.sendPhoto(msg.chat.id, imagePath);
-           fs.unlink(imagePath, (err) => {
-             if (err) throw err;
-           });
+          await downloadImage(image_url, "download.jpg")
+            .then((imagePath) => {
+              console.log(`Image downloaded at: ${imagePath}`);
 
-        })
-        .catch((error) => {
-          console.error("Error downloading the image:", error);
-        });
+              bot.sendPhoto(msg.chat.id, imagePath);
 
-         bot.sendMessage(
-           msg.chat.id,
-           "Generating the image 🌌 please wait a few seconds ⏳ ...\n\n "
-         );
+              fs.unlink(imagePath, (err) => {
+                if (err) throw err;
+              });
+            })
+            .catch((error) => {
+              console.error("Error downloading the image:", error);
+            });
 
-    }
-  );
+          await generateAudio(msg.chat.id, revisedPrompt)
+            .then((audioPath) => {
+              console.log("Audio path is " + audioPath);
+              bot.sendAudio(msg.chat.id, audioPath, {
+                caption:
+                  "🔰 Title: Generated Audio for the AI Image \n 📁 File: MP3 \n",
+              });
+              fs.unlink(audioPath, (err) => {
+                if (err) throw err;
+              });
+            })
+            .catch((error) => {
+              console.error("Error generating or sending the audio:", error);
+              // Handle the error appropriately (e.g., send a message to the user)
+            });
+        }
+      );
+    });
 });
 
 bot.onText(/developer/, (msg) => {
@@ -97,7 +116,7 @@ bot.onText(/back/, (msg) => {
 
 // Function to download and save the image
 async function downloadImage(url, filename) {
-  const imagePath = path.join(__dirname, ".temp", filename);
+  const imagePath = path.join(__dirname, ".temp/image", filename);
 
   const response = await axios({
     method: "get",
@@ -112,5 +131,36 @@ async function downloadImage(url, filename) {
   return new Promise((resolve, reject) => {
     writer.on("finish", () => resolve(imagePath));
     writer.on("error", reject);
+  });
+}
+
+// Function to generate audio based on the description
+
+function generateAudio(chatId, description) {
+  return new Promise((resolve, reject) => {
+    const audioPath = path.join(
+      __dirname,
+      ".temp/audio",
+      `${chatId}-audio.mp3`
+    );
+
+    // cheching if directory exists
+    fs.mkdirSync(path.dirname(audioPath), { recursive: true });
+
+    const reScript = "Here is the description of the image: " + description;
+
+    // Save the audio file
+    gtts.save(audioPath, reScript, function (err, result) {
+      if (err) {
+        reject(err);
+      } else {
+        // Check if the file exists and is not empty
+        if (fs.existsSync(audioPath) && fs.statSync(audioPath).size > 0) {
+          resolve(audioPath);
+        } else {
+          reject(new Error("Audio file is empty or does not exist"));
+        }
+      }
+    });
   });
 }

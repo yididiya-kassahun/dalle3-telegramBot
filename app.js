@@ -1,6 +1,8 @@
 const TelegramBot = require("node-telegram-bot-api");
 const OpenAIApi = require("openai");
 let fs = require("fs");
+const path = require("path");
+const axios = require("axios");
 const dotenv = require("dotenv");
 dotenv.config();
 
@@ -57,13 +59,30 @@ bot.onText(/Img Generate/, async (msg) => {
         size: "1024x1024",
       });
 
-     let image_url = generatedImage.data[0].url;
-     let revisedPrompt = generatedImage.data[0].revised_prompt;
-     
+      let image_url = generatedImage.data[0].url;
+      let revisedPrompt = generatedImage.data[0].revised_prompt;
+
       console.log(image_url);
       console.log(revisedPrompt);
 
-      bot.sendMessage(msg.chat.id, image_url);
+    await downloadImage(image_url, "download.jpg")
+        .then((imagePath) => {
+          console.log(`Image downloaded at: ${imagePath}`);
+          bot.sendPhoto(msg.chat.id, imagePath);
+           fs.unlink(imagePath, (err) => {
+             if (err) throw err;
+           });
+
+        })
+        .catch((error) => {
+          console.error("Error downloading the image:", error);
+        });
+
+         bot.sendMessage(
+           msg.chat.id,
+           "Generating the image 🌌 please wait a few seconds ⏳ ...\n\n "
+         );
+
     }
   );
 });
@@ -75,3 +94,23 @@ bot.onText(/developer/, (msg) => {
 bot.onText(/back/, (msg) => {
   startMenu(msg);
 });
+
+// Function to download and save the image
+async function downloadImage(url, filename) {
+  const imagePath = path.join(__dirname, ".temp", filename);
+
+  const response = await axios({
+    method: "get",
+    url: url,
+    responseType: "stream",
+  });
+
+  const writer = fs.createWriteStream(imagePath);
+
+  response.data.pipe(writer);
+
+  return new Promise((resolve, reject) => {
+    writer.on("finish", () => resolve(imagePath));
+    writer.on("error", reject);
+  });
+}

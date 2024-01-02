@@ -7,7 +7,7 @@ const axios = require("axios");
 const dotenv = require("dotenv");
 dotenv.config();
 
-const TOKEN = "6798703589:AAGchuqNFIhX-I6zlJOcpU9fp_VIg4FhDqI";
+const TOKEN = "";
 
 // *********** OpenAI
 
